@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add Inventory Item</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .form-container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #34495e;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #27ae60;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .nav-links {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .nav-links a {
+            color: #3498db;
+            text-decoration: none;
+            margin: 0 10px;
+            padding: 8px 16px;
+            border: 1px solid #3498db;
+            border-radius: 5px;
+        }
+        .info-note {
+            background: #e8f4fd;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .error-state {
+            text-align: center;
+            padding: 20px;
+            color: #e74c3c;
+            background: #f8d7da;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <h1>➕ Add/Update Inventory Item</h1>
+        
+        <div id="supabaseError"></div>
+        
+        <div class="info-note">
+            💡 <strong>Note:</strong> Beginning Stock is set only when you first add an item. For existing items, only Ending Stock will be updated.
+        </div>
+        
+        <form id="inventoryForm">
+            <div class="form-group">
+                <label for="itemCategory">Items:</label>
+                <select id="itemCategory" required>
+                    <option value="">Select item</option>
+                    <option value="Gula/Sugar (PKT)">Gula/Sugar (PKT)</option>
+                    <option value="Kopi (PKT)">Kopi (PKT)</option>
+                    <option value="MILO (TIN)">MILO (TIN)</option>
+                    <option value="Susu Pekat/Condensed Milk (CAN)">Susu Pekat/Condensed Milk (CAN)</option>
+                    <option value="Susu Pekat/Condensed Milk (PKT)">Susu Pekat/Condensed Milk (PKT)</option>
+                    <option value="Susu Cair/Evaporated Milk (CAN)">Susu Cair/Evaporated Milk (CAN)</option>
+                    <option value="Syrup Oren">Syrup Oren</option>
+                    <option value="Syrup Rose">Syrup Rose</option>
+                    <option value="Syrup Jagung/Corn">Syrup Jagung/Corn</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="beginningStock">Beginning Stock (Initial Quantity):</label>
+                <input type="number" id="beginningStock" placeholder="Enter initial quantity" min="1">
+            </div>
+            
+            <div class="form-group">
+                <label for="endingStock">Ending Stock (Current Quantity):</label>
+                <input type="number" id="endingStock" placeholder="Enter current quantity" min="0" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="dateUpdated">Last Updated:</label>
+                <input type="date" id="dateUpdated" required>
+            </div>
+            
+            <button type="submit" id="submitBtn">Save to Inventory</button>
+        </form>
+        
+        <div class="nav-links">
+            <a href="index.html">📊 View Dashboard</a>
+            <a href="#" onclick="clearAllData()">🗑️ Clear All Data</a>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeFormApp();
+        });
+
+        function createSupabaseClient() {
+            return {
+                from: (table) => ({
+                    select: () => ({
+                        eq: (column, value) => ({
+                            async single() {
+                                const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/${table}?${column}=eq.${encodeURIComponent(value)}`, {
+                                    headers: {
+                                        'apikey': SUPABASE_CONFIG.anonKey,
+                                        'Authorization': `Bearer ${SUPABASE_CONFIG.anonKey}`,
+                                        'Content-Type': 'application/json'
+                                    }
+                                });
+                                if (!response.ok) throw new Error(await response.text());
+                                const data = await response.json();
+                                return { data: data[0], error: data.length === 0 ? { code: 'PGRST116' } : null };
+                            }
+                        })
+                    }),
+                    insert: (items) => ({
+                        async single() {
+                            const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/${table}`, {
+                                method: 'POST',
+                                headers: {
+                                    'apikey': SUPABASE_CONFIG.anonKey,
+                                    'Authorization': `Bearer ${SUPABASE_CONFIG.anonKey}`,
+                                    'Content-Type': 'application/json',
+                                    'Prefer': 'return=representation'
+                                },
+                                body: JSON.stringify(items[0])
+                            });
+                            if (!response.ok) throw new Error(await response.text());
+                            const data = await response.json();
+                            return { data: data[0], error: null };
+                        }
+                    }),
+                    update: (updates) => ({
+                        eq: (column, value) => ({
+                            async single() {
+                                const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/${table}?${column}=eq.${encodeURIComponent(value)}`, {
+                                    method: 'PATCH',
+                                    headers: {
+                                        'apikey': SUPABASE_CONFIG.anonKey,
+                                        'Authorization': `Bearer ${SUPABASE_CONFIG.anonKey}`,
+                                        'Content-Type': 'application/json',
+                                        'Prefer': 'return=representation'
+                                    },
+                                    body: JSON.stringify(updates)
+                                });
+                                if (!response.ok) throw new Error(await response.text());
+                                const data = await response.json();
+                                return { data: data[0], error: null };
+                            }
+                        })
+                    })
+                })
+            };
+        }
+
+        function initializeFormApp() {
+            if (!SUPABASE_CONFIG.url || SUPABASE_CONFIG.url.includes('YOUR-PROJECT-REF')) {
+                const errorDiv = document.getElementById('supabaseError');
+                if (errorDiv) {
+                    errorDiv.innerHTML = `
+                        <div class="error-state">
+                            <h2>⚠️ Configuration Error</h2>
+                            <p>Please configure Supabase credentials in config.js</p>
+                        </div>
+                    `;
+                }
+                return;
+            }
+
+            window.supabase = createSupabaseClient();
+            setupForm();
+        }
+
+        function setupForm() {
+            document.getElementById('dateUpdated').valueAsDate = new Date();
+            
+            document.getElementById('inventoryForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                await handleFormSubmit();
+            });
+        }
+        
+        async function handleFormSubmit() {
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Saving...';
+            
+            const items = document.getElementById('itemCategory').value;
+            const last_updated = document.getElementById('dateUpdated').value;
+            const ending_stock = parseInt(document.getElementById('endingStock').value);
+            const beginning_stock = parseInt(document.getElementById('beginningStock').value) || 0;
+            
+            try {
+                const { data: existingItem } = await window.supabase
+                    .from('inventory')
+                    .select()
+                    .eq('Items', items)
+                    .single();
+                
+                if (existingItem) {
+                    await window.supabase
+                        .from('inventory')
+                        .update({
+                            "Last Updated": last_updated,
+                            "Ending Stock": ending_stock
+                        })
+                        .eq('Items', items);
+                    
+                    alert(`✅ "${items}" updated!`);
+                } else {
+                    if (!beginning_stock) {
+                        alert('⚠️ Please enter Beginning Stock for new items');
+                        return;
+                    }
+                    
+                    const reorder_point = Math.max(1, Math.floor(beginning_stock * 0.5));
+                    
+                    await window.supabase
+                        .from('inventory')
+                        .insert([{
+                            "Items": items,
+                            "Last Updated": last_updated,
+                            "Beginning Stock": beginning_stock,
+                            "Ending Stock": ending_stock,
+                            "Reorder Point": reorder_point,
+                            "Status": ending_stock <= reorder_point ? "Low Stock" : "In Stock"
+                        }]);
+                    
+                    alert(`✅ "${items}" added to inventory!`);
+                }
+                
+                document.getElementById('inventoryForm').reset();
+                document.getElementById('dateUpdated').valueAsDate = new Date());
+                
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Save to Inventory';
+            }
+        }
+        
+        async function clearAllData() {
+            if (confirm('Clear ALL inventory data? This cannot be undone!')) {
+                try {
+                    await window.supabase
+                        .from('inventory')
+                        .delete()
+                        .neq('Items', 'dummy');
+                    
+                    alert('All data cleared!');
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+            }
+        }
+
+        window.clearAllData = clearAllData;
+    </script>
+</body>
+</html>

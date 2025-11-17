@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pantry Inventory Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .dashboard {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #34495e;
+            color: white;
+        }
+        .status-green { color: #27ae60; font-weight: bold; }
+        .status-orange { color: #f39c12; font-weight: bold; }
+        .status-red { color: #e74c3c; font-weight: bold; }
+        .nav-links {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .nav-links a, .nav-links button {
+            background: #3498db;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            display: inline-block;
+            margin: 0 10px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .empty-state, .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+        .error-state {
+            text-align: center;
+            padding: 20px;
+            color: #e74c3c;
+            background: #f8d7da;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <h1>📊 Pantry Inventory Dashboard</h1>
+        
+        <div class="nav-links">
+            <a href="add-item.html">➕ Add New Item</a>
+            <button onclick="loadInventory()">🔄 Refresh</button>
+            <button onclick="clearAllData()">🗑️ Clear All Data</button>
+        </div>
+        
+        <div id="inventoryTable">
+            <div class="loading">Loading inventory data...</div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script>
+        let tableContainer;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded');
+            tableContainer = document.getElementById('inventoryTable');
+            
+            if (!tableContainer) {
+                console.error('inventoryTable not found');
+                return;
+            }
+            
+            initializeApp();
+        });
+
+        function createSupabaseClient() {
+            return {
+                from: (table) => ({
+                    select: () => ({
+                        order: (column, options) => ({
+                            async single() {
+                                const order = options.ascending ? 'asc' : 'desc';
+                                const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/${table}?select=*&order=${column}.${order}`, {
+                                    headers: {
+                                        'apikey': SUPABASE_CONFIG.anonKey,
+                                        'Authorization': `Bearer ${SUPABASE_CONFIG.anonKey}`,
+                                        'Content-Type': 'application/json'
+                                    }
+                                });
+                                if (!response.ok) throw new Error(await response.text());
+                                const data = await response.json();
+                                return { data, error: null };
+                            }
+                        })
+                    }),
+                    delete: () => ({
+                        neq: (column, value) => ({
+                            async single() {
+                                const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/${table}?${column}=neq.${encodeURIComponent(value)}`, {
+                                    method: 'DELETE',
+                                    headers: {
+                                        'apikey': SUPABASE_CONFIG.anonKey,
+                                        'Authorization': `Bearer ${SUPABASE_CONFIG.anonKey}`,
+                                        'Content-Type': 'application/json'
+                                    }
+                                });
+                                if (!response.ok) throw new Error(await response.text());
+                                return { data: null, error: null };
+                            }
+                        })
+                    })
+                })
+            };
+        }
+
+        function initializeApp() {
+            if (!SUPABASE_CONFIG.url || SUPABASE_CONFIG.url.includes('YOUR-PROJECT-REF')) {
+                showError('Please configure Supabase credentials in config.js');
+                return;
+            }
+
+            window.supabase = createSupabaseClient();
+            loadInventory();
+        }
+
+        function showError(message) {
+            if (tableContainer) {
+                tableContainer.innerHTML = `<div class="error-state">${message}</div>`;
+            }
+        }
+
+        async function loadInventory() {
+            if (!tableContainer) return;
+            
+            tableContainer.innerHTML = '<div class="loading">Loading inventory data...</div>';
+            
+            try {
+                const { data: inventory } = await window.supabase
+                    .from('inventory')
+                    .select()
+                    .order('Items', { ascending: true });
+                
+                if (!inventory || inventory.length === 0) {
+                    tableContainer.innerHTML = `
+                        <div class="empty-state">
+                            <h2>No inventory data yet</h2>
+                            <p>Click "Add New Item" to start tracking your inventory</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let tableHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Items</th>
+                                <th>Last Updated</th>
+                                <th>Beginning Stock</th>
+                                <th>Reorder Point</th>
+                                <th>Ending Stock</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                inventory.forEach(item => {
+                    const beginningStock = item['Beginning Stock'] || 0;
+                    const endingStock = item['Ending Stock'] || 0;
+                    const reorderPoint = item['Reorder Point'] || 0;
+                    
+                    let status, statusClass;
+                    if (endingStock <= reorderPoint) {
+                        status = "🔴 Critical";
+                        statusClass = "status-red";
+                    } else if (endingStock <= reorderPoint * 1.5) {
+                        status = "🟡 Low Stock";
+                        statusClass = "status-orange";
+                    } else {
+                        status = "🟢 Good Stock";
+                        statusClass = "status-green";
+                    }
+                    
+                    tableHTML += `
+                        <tr>
+                            <td>${item.Items || 'N/A'}</td>
+                            <td>${item['Last Updated'] || 'N/A'}</td>
+                            <td>${beginningStock}</td>
+                            <td>${reorderPoint}</td>
+                            <td>${endingStock}</td>
+                            <td class="${statusClass}">${status}</td>
+                        </tr>
+                    `;
+                });
+                
+                tableHTML += '</tbody></table>';
+                tableContainer.innerHTML = tableHTML;
+                
+            } catch (error) {
+                tableContainer.innerHTML = `
+                    <div class="error-state">
+                        <h2>Error loading data</h2>
+                        <p>${error.message}</p>
+                        <button onclick="loadInventory()">Try Again</button>
+                    </div>
+                `;
+            }
+        }
+        
+        async function clearAllData() {
+            if (confirm('Clear ALL inventory data? This cannot be undone!')) {
+                try {
+                    await window.supabase
+                        .from('inventory')
+                        .delete()
+                        .neq('Items', 'dummy');
+                    
+                    alert('All data cleared!');
+                    loadInventory();
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+            }
+        }
+
+        window.loadInventory = loadInventory;
+        window.clearAllData = clearAllData;
+    </script>
+</body>
+</html>
