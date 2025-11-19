@@ -18,6 +18,13 @@
             padding: 30px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
+        .login-container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
         h1 {
             color: #2c3e50;
             text-align: center;
@@ -89,24 +96,44 @@
             margin-bottom: 20px;
             display: none;
         }
-        .rls-fix {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
+        .login-form {
+            max-width: 300px;
+            margin: 0 auto;
+        }
+        .login-btn {
+            background-color: #3498db;
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    <div class="form-container">
+    <!-- Login Section (shown by default) -->
+    <div id="loginSection" class="login-container">
+        <h1>🔒 Pantry Inventory</h1>
+        <p>Please login to access the inventory system</p>
+        <div class="login-form">
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" placeholder="Enter username" value="admin">
+            </div>
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" placeholder="Enter password" value="password123">
+            </div>
+            <button onclick="login()" class="login-btn">Login</button>
+        </div>
+        <div style="margin-top: 20px; font-size: 12px; color: #7f8c8d;">
+            Default: admin / password123<br>
+            Change these in the code for security
+        </div>
+    </div>
+
+    <!-- Main Form (hidden until login) -->
+    <div id="mainSection" class="form-container" style="display: none;">
         <h1>➕ Add/Update Inventory Item</h1>
         
         <div id="supabaseError"></div>
         <div id="successMessage" class="success-message"></div>
-        
-
         
         <div class="info-note">
             💡 <strong>Note:</strong> Beginning Stock is set only when you first add an item. For existing items, only Ending Stock will be updated.
@@ -149,23 +176,69 @@
         
         <div class="nav-links">
             <a href="index.html">📊 View Dashboard</a>
+            <a href="#" onclick="logout()">🚪 Logout</a>
             <a href="#" onclick="clearAllData()">🗑️ Clear All Data</a>
         </div>
     </div>
 
     <script>
+    // ==================== CONFIGURATION ====================
     // Supabase Configuration - REPLACE WITH YOUR ACTUAL CREDENTIALS!
-    const SUPABASE_URL = 'https://pcrsiifyhsltouxplqsl.supabase.co';  // Replace with your actual URL
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjcnNpaWZ5aHNsdG91eHBscXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMDU0NjEsImV4cCI6MjA3ODg4MTQ2MX0.zIFUEq6dNJ-Ys3sCcZGAFnssPHNzxPcrUz-z8Ho3v_4';  // Replace with your actual anon key
+    const SUPABASE_URL = 'https://abc.supabase.co';  // Replace with your actual URL
+    const SUPABASE_ANON_KEY = 'xyz';  // Replace with your actual anon key
 
+    // Login Configuration - CHANGE THESE FOR SECURITY!
+    const VALID_USERNAME = 'admin';
+    const VALID_PASSWORD = 'password123';
+
+    // ==================== APP INITIALIZATION ====================
     // Initialize Supabase client
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     document.addEventListener('DOMContentLoaded', function() {
         console.log('DOM loaded - starting form app');
-        initializeFormApp();
+        checkLoginStatus();
     });
 
+    // ==================== LOGIN SYSTEM ====================
+    function checkLoginStatus() {
+        const isLoggedIn = localStorage.getItem('pantryLoggedIn') === 'true';
+        if (isLoggedIn) {
+            showMainApp();
+        } else {
+            showLogin();
+        }
+    }
+
+    function login() {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        
+        if (username === VALID_USERNAME && password === VALID_PASSWORD) {
+            localStorage.setItem('pantryLoggedIn', 'true');
+            showMainApp();
+        } else {
+            alert('Invalid username or password');
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem('pantryLoggedIn');
+        showLogin();
+    }
+
+    function showLogin() {
+        document.getElementById('loginSection').style.display = 'block';
+        document.getElementById('mainSection').style.display = 'none';
+    }
+
+    function showMainApp() {
+        document.getElementById('loginSection').style.display = 'none';
+        document.getElementById('mainSection').style.display = 'block';
+        initializeFormApp();
+    }
+
+    // ==================== INVENTORY MANAGEMENT ====================
     function initializeFormApp() {
         console.log('Initializing form app...');
         
@@ -186,7 +259,6 @@
                 <div class="error-state">
                     <h2>⚠️ Configuration Error</h2>
                     <p>${message}</p>
-                    <p><strong>How to fix:</strong> Replace the SUPABASE_URL and SUPABASE_ANON_KEY in the script with your actual Supabase credentials.</p>
                 </div>
             `;
         }
@@ -229,6 +301,19 @@
         
         console.log('Form setup complete');
     }
+
+    // Calculate status based on your new requirements
+    function calculateStatus(beginningStock, endingStock) {
+        const usagePercentage = ((beginningStock - endingStock) / beginningStock) * 100;
+        
+        if (usagePercentage >= 90) {
+            return "Critical";
+        } else if (usagePercentage >= 50) {
+            return "Warning";
+        } else {
+            return "Good";
+        }
+    }
     
     async function handleFormSubmit() {
         console.log('handleFormSubmit called');
@@ -266,32 +351,30 @@
 
             if (checkError) {
                 console.error('Error checking item:', checkError);
-                // If it's an RLS error, provide specific guidance
-                if (checkError.message.includes('row-level security')) {
-                    throw new Error('RLS Policy Blocked: Go to Supabase → Authentication → Policies → inventory table and disable RLS, or run the SQL provided in the instructions.');
-                }
                 throw new Error('Failed to check existing items: ' + checkError.message);
             }
             
             console.log('Existing item check result:', existingItem);
             
             if (existingItem) {
-                // Update existing item
+                // Update existing item - use existing beginning stock for calculations
+                const currentBeginningStock = existingItem["Beginning Stock"];
+                const status = calculateStatus(currentBeginningStock, endingStock);
+                const reorderPoint = Math.max(1, Math.floor(currentBeginningStock * 0.5));
+                
                 console.log('Updating existing item');
                 const { error: updateError } = await supabase
                     .from('inventory')
                     .update({
                         "Last Updated": lastUpdated,
                         "Ending Stock": endingStock,
-                        "Status": endingStock <= existingItem["Reorder Point"] ? "Low Stock" : "In Stock"
+                        "Reorder Point": reorderPoint,
+                        "Status": status
                     })
                     .eq('Items', itemName);
                 
                 if (updateError) {
                     console.error('Update error:', updateError);
-                    if (updateError.message.includes('row-level security')) {
-                        throw new Error('RLS Policy Blocked: Go to Supabase → Authentication → Policies → inventory table and disable RLS, or run the SQL provided in the instructions.');
-                    }
                     throw new Error('Failed to update item: ' + updateError.message);
                 }
                 
@@ -305,7 +388,10 @@
                 }
                 
                 const reorderPoint = Math.max(1, Math.floor(beginningStock * 0.5));
+                const status = calculateStatus(beginningStock, endingStock);
+                
                 console.log('Reorder point calculated:', reorderPoint);
+                console.log('Status calculated:', status);
                 
                 const { error: insertError } = await supabase
                     .from('inventory')
@@ -315,14 +401,11 @@
                         "Beginning Stock": beginningStock,
                         "Ending Stock": endingStock,
                         "Reorder Point": reorderPoint,
-                        "Status": endingStock <= reorderPoint ? "Low Stock" : "In Stock"
+                        "Status": status
                     }]);
                 
                 if (insertError) {
                     console.error('Insert error:', insertError);
-                    if (insertError.message.includes('row-level security')) {
-                        throw new Error('RLS Policy Blocked: Go to Supabase → Authentication → Policies → inventory table and disable RLS, or run the SQL provided in the instructions.');
-                    }
                     throw new Error('Failed to add item: ' + insertError.message);
                 }
                 
@@ -357,9 +440,6 @@
                 .neq('Items', '');
             
             if (error) {
-                if (error.message.includes('row-level security')) {
-                    throw new Error('RLS Policy Blocked: Go to Supabase → Authentication → Policies → inventory table and disable RLS, or run the SQL provided in the instructions.');
-                }
                 throw error;
             }
             
@@ -370,9 +450,10 @@
         }
     }
 
+    // Make functions available globally
     window.clearAllData = clearAllData;
+    window.login = login;
+    window.logout = logout;
     </script>
 </body>
 </html>
-
-
