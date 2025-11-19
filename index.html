@@ -18,6 +18,15 @@
             padding: 20px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
+        .login-container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+            margin: 50px auto;
+        }
         h1 {
             color: #2c3e50;
             text-align: center;
@@ -40,9 +49,9 @@
         tr:hover {
             background-color: #f5f5f5;
         }
-        .status-green { color: #27ae60; font-weight: bold; }
-        .status-orange { color: #f39c12; font-weight: bold; }
-        .status-red { color: #e74c3c; font-weight: bold; }
+        .status-good { color: #27ae60; font-weight: bold; }
+        .status-warning { color: #f39c12; font-weight: bold; }
+        .status-critical { color: #e74c3c; font-weight: bold; }
         .nav-links {
             text-align: center;
             margin-bottom: 20px;
@@ -81,17 +90,45 @@
             font-size: 14px;
             margin-top: 20px;
         }
+        .login-form {
+            max-width: 300px;
+            margin: 0 auto;
+        }
+        .login-btn {
+            background-color: #3498db;
+        }
     </style>
-    <!-- Include Supabase JS Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    <div class="dashboard">
+    <!-- Login Section -->
+    <div id="loginSection" class="login-container">
+        <h1>🔒 Pantry Inventory</h1>
+        <p>Please login to access the dashboard</p>
+        <div class="login-form">
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" placeholder="Enter username" value="admin">
+            </div>
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" placeholder="Enter password" value="password123">
+            </div>
+            <button onclick="login()" class="login-btn">Login</button>
+        </div>
+        <div style="margin-top: 20px; font-size: 12px; color: #7f8c8d;">
+            Default: admin / password123
+        </div>
+    </div>
+
+    <!-- Dashboard Section -->
+    <div id="mainSection" class="dashboard" style="display: none;">
         <h1>📊 Pantry Inventory Dashboard</h1>
         
         <div class="nav-links">
             <a href="add-item.html">➕ Add New Item</a>
             <button onclick="loadInventory()">🔄 Refresh</button>
+            <button onclick="logout()">🚪 Logout</button>
             <button onclick="clearAllData()">🗑️ Clear All Data</button>
         </div>
         
@@ -103,182 +140,226 @@
     </div>
 
     <script>
-        // Supabase Configuration - REPLACE WITH YOUR ACTUAL CREDENTIALS!
-        const SUPABASE_URL = 'https://pcrsiifyhsltouxplqsl.supabase.co';  // Replace with your actual URL
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjcnNpaWZ5aHNsdG91eHBscXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMDU0NjEsImV4cCI6MjA3ODg4MTQ2MX0.zIFUEq6dNJ-Ys3sCcZGAFnssPHNzxPcrUz-z8Ho3v_4';  // Replace with your actual anon key
+    // ==================== CONFIGURATION ====================
+    const SUPABASE_URL = 'https://pcrsiifyhsltouxplqsl.supabase.co';  // Replace with your actual URL
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjcnNpaWZ5aHNsdG91eHBscXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMDU0NjEsImV4cCI6MjA3ODg4MTQ2MX0.zIFUEq6dNJ-Ys3sCcZGAFnssPHNzxPcrUz-z8Ho3v_4z';  // Replace with your actual anon key
 
-        // Initialize Supabase client
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Login Configuration - CHANGE THESE FOR SECURITY!
+    const VALID_USERNAME = 'admin';
+    const VALID_PASSWORD = 'password123';
 
-        let tableContainer;
-        let lastUpdatedElement;
+    // ==================== APP INITIALIZATION ====================
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded');
-            tableContainer = document.getElementById('inventoryTable');
-            lastUpdatedElement = document.getElementById('lastUpdated');
-            
-            if (!tableContainer) {
-                console.error('inventoryTable not found');
-                return;
-            }
-            
-            initializeApp();
-        });
+    let tableContainer;
+    let lastUpdatedElement;
 
-        function initializeApp() {
-            if (!SUPABASE_URL || SUPABASE_URL.includes('abc') || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('xyz')) {
-                showError('Please configure Supabase credentials in the code. Replace SUPABASE_URL and SUPABASE_ANON_KEY with your actual values.');
-                return;
-            }
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM loaded');
+        tableContainer = document.getElementById('inventoryTable');
+        lastUpdatedElement = document.getElementById('lastUpdated');
+        
+        if (!tableContainer) {
+            console.error('inventoryTable not found');
+            return;
+        }
+        
+        checkLoginStatus();
+    });
 
-            console.log('Supabase client initialized');
-            loadInventory();
+    // ==================== LOGIN SYSTEM ====================
+    function checkLoginStatus() {
+        const isLoggedIn = localStorage.getItem('pantryLoggedIn') === 'true';
+        if (isLoggedIn) {
+            showMainApp();
+        } else {
+            showLogin();
+        }
+    }
+
+    function login() {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        
+        if (username === VALID_USERNAME && password === VALID_PASSWORD) {
+            localStorage.setItem('pantryLoggedIn', 'true');
+            showMainApp();
+        } else {
+            alert('Invalid username or password');
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem('pantryLoggedIn');
+        showLogin();
+    }
+
+    function showLogin() {
+        document.getElementById('loginSection').style.display = 'block';
+        document.getElementById('mainSection').style.display = 'none';
+    }
+
+    function showMainApp() {
+        document.getElementById('loginSection').style.display = 'none';
+        document.getElementById('mainSection').style.display = 'block';
+        initializeApp();
+    }
+
+    // ==================== DASHBOARD FUNCTIONS ====================
+    function initializeApp() {
+        if (!SUPABASE_URL || SUPABASE_URL.includes('abc') || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('xyz')) {
+            showError('Please configure Supabase credentials in the code. Replace SUPABASE_URL and SUPABASE_ANON_KEY with your actual values.');
+            return;
         }
 
-        function showError(message) {
-            if (tableContainer) {
+        console.log('Supabase client initialized');
+        loadInventory();
+    }
+
+    function showError(message) {
+        if (tableContainer) {
+            tableContainer.innerHTML = `
+                <div class="error-state">
+                    <h2>⚠️ Configuration Error</h2>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+    }
+
+    // Calculate status based on your new requirements
+    function calculateStatus(beginningStock, endingStock) {
+        if (beginningStock === 0) return "No Data";
+        
+        const usagePercentage = ((beginningStock - endingStock) / beginningStock) * 100;
+        
+        if (usagePercentage >= 90) {
+            return { status: "Critical", class: "status-critical" };
+        } else if (usagePercentage >= 50) {
+            return { status: "Warning", class: "status-warning" };
+        } else {
+            return { status: "Good", class: "status-good" };
+        }
+    }
+
+    async function loadInventory() {
+        if (!tableContainer) return;
+        
+        tableContainer.innerHTML = '<div class="loading">Loading inventory data...</div>';
+        
+        try {
+            console.log('Fetching inventory data...');
+            const { data: inventory, error } = await supabase
+                .from('inventory')
+                .select('*')
+                .order('Items', { ascending: true });
+            
+            if (error) {
+                throw error;
+            }
+            
+            console.log('Inventory data received:', inventory);
+            
+            if (!inventory || inventory.length === 0) {
                 tableContainer.innerHTML = `
-                    <div class="error-state">
-                        <h2>⚠️ Configuration Error</h2>
-                        <p>${message}</p>
-                        <p><strong>How to fix:</strong> Replace the SUPABASE_URL and SUPABASE_ANON_KEY in the script with your actual Supabase credentials from your project settings.</p>
+                    <div class="empty-state">
+                        <h2>No inventory data yet</h2>
+                        <p>Click "Add New Item" to start tracking your inventory</p>
                     </div>
                 `;
-            }
-        }
-
-        async function loadInventory() {
-            if (!tableContainer) return;
-            
-            tableContainer.innerHTML = '<div class="loading">Loading inventory data...</div>';
-            
-            try {
-                console.log('Fetching inventory data...');
-                const { data: inventory, error } = await supabase
-                    .from('inventory')
-                    .select('*')
-                    .order('Items', { ascending: true });
-                
-                if (error) {
-                    throw error;
-                }
-                
-                console.log('Inventory data received:', inventory);
-                
-                if (!inventory || inventory.length === 0) {
-                    tableContainer.innerHTML = `
-                        <div class="empty-state">
-                            <h2>No inventory data yet</h2>
-                            <p>Click "Add New Item" to start tracking your inventory</p>
-                        </div>
-                    `;
-                    updateLastUpdated();
-                    return;
-                }
-                
-                let tableHTML = `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Items</th>
-                                <th>Last Updated</th>
-                                <th>Beginning Stock</th>
-                                <th>Reorder Point</th>
-                                <th>Ending Stock</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                `;
-                
-                inventory.forEach(item => {
-                    const beginningStock = item['Beginning Stock'] || 0;
-                    const endingStock = item['Ending Stock'] || 0;
-                    const reorderPoint = item['Reorder Point'] || 0;
-                    
-                    let status, statusClass;
-                    if (endingStock <= reorderPoint) {
-                        status = "🔴 Critical";
-                        statusClass = "status-red";
-                    } else if (endingStock <= reorderPoint * 1.5) {
-                        status = "🟡 Low Stock";
-                        statusClass = "status-orange";
-                    } else {
-                        status = "🟢 Good Stock";
-                        statusClass = "status-green";
-                    }
-                    
-                    tableHTML += `
-                        <tr>
-                            <td><strong>${item.Items || 'N/A'}</strong></td>
-                            <td>${item['Last Updated'] || 'N/A'}</td>
-                            <td>${beginningStock}</td>
-                            <td>${reorderPoint}</td>
-                            <td><strong>${endingStock}</strong></td>
-                            <td class="${statusClass}">${status}</td>
-                        </tr>
-                    `;
-                });
-                
-                tableHTML += '</tbody></table>';
-                tableContainer.innerHTML = tableHTML;
                 updateLastUpdated();
-                
-            } catch (error) {
-                console.error('Error loading inventory:', error);
-                tableContainer.innerHTML = `
-                    <div class="error-state">
-                        <h2>Error loading data</h2>
-                        <p>${error.message}</p>
-                        <p><strong>Possible causes:</strong></p>
-                        <ul style="text-align: left; display: inline-block;">
-                            <li>Incorrect Supabase credentials</li>
-                            <li>Network connection issue</li>
-                            <li>Database table doesn't exist</li>
-                            <li>RLS policies blocking access</li>
-                        </ul>
-                        <br>
-                        <button onclick="loadInventory()" style="margin-top: 10px;">Try Again</button>
-                    </div>
-                `;
-            }
-        }
-        
-        function updateLastUpdated() {
-            if (lastUpdatedElement) {
-                const now = new Date();
-                lastUpdatedElement.textContent = `Last updated: ${now.toLocaleString()}`;
-            }
-        }
-        
-        async function clearAllData() {
-            if (!confirm('⚠️ Are you sure you want to clear ALL inventory data? This action cannot be undone!')) {
                 return;
             }
             
-            try {
-                const { error } = await supabase
-                    .from('inventory')
-                    .delete()
-                    .neq('Items', ''); // Delete all records
+            let tableHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Items</th>
+                            <th>Last Updated</th>
+                            <th>Beginning Stock</th>
+                            <th>Reorder Point</th>
+                            <th>Ending Stock</th>
+                            <th>Stock Used</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            inventory.forEach(item => {
+                const beginningStock = item['Beginning Stock'] || 0;
+                const endingStock = item['Ending Stock'] || 0;
+                const reorderPoint = item['Reorder Point'] || 0;
+                const stockUsed = beginningStock - endingStock;
+                const usagePercentage = beginningStock > 0 ? Math.round(((beginningStock - endingStock) / beginningStock) * 100) : 0;
                 
-                if (error) {
-                    throw error;
-                }
+                const statusInfo = calculateStatus(beginningStock, endingStock);
                 
-                alert('✅ All inventory data has been cleared!');
-                loadInventory();
-            } catch (error) {
-                console.error('Error clearing data:', error);
-                alert('❌ Error clearing data: ' + error.message);
-            }
+                tableHTML += `
+                    <tr>
+                        <td><strong>${item.Items || 'N/A'}</strong></td>
+                        <td>${item['Last Updated'] || 'N/A'}</td>
+                        <td>${beginningStock}</td>
+                        <td>${reorderPoint}</td>
+                        <td><strong>${endingStock}</strong></td>
+                        <td>${stockUsed} (${usagePercentage}%)</td>
+                        <td class="${statusInfo.class}">${statusInfo.status}</td>
+                    </tr>
+                `;
+            });
+            
+            tableHTML += '</tbody></table>';
+            tableContainer.innerHTML = tableHTML;
+            updateLastUpdated();
+            
+        } catch (error) {
+            console.error('Error loading inventory:', error);
+            tableContainer.innerHTML = `
+                <div class="error-state">
+                    <h2>Error loading data</h2>
+                    <p>${error.message}</p>
+                    <button onclick="loadInventory()" style="margin-top: 10px;">Try Again</button>
+                </div>
+            `;
         }
+    }
+    
+    function updateLastUpdated() {
+        if (lastUpdatedElement) {
+            const now = new Date();
+            lastUpdatedElement.textContent = `Last updated: ${now.toLocaleString()}`;
+        }
+    }
+    
+    async function clearAllData() {
+        if (!confirm('⚠️ Are you sure you want to clear ALL inventory data? This action cannot be undone!')) {
+            return;
+        }
+        
+        try {
+            const { error } = await supabase
+                .from('inventory')
+                .delete()
+                .neq('Items', '');
+            
+            if (error) {
+                throw error;
+            }
+            
+            alert('✅ All inventory data has been cleared!');
+            loadInventory();
+        } catch (error) {
+            console.error('Error clearing data:', error);
+            alert('❌ Error clearing data: ' + error.message);
+        }
+    }
 
-        // Make functions available globally
-        window.loadInventory = loadInventory;
-        window.clearAllData = clearAllData;
+    // Make functions available globally
+    window.loadInventory = loadInventory;
+    window.clearAllData = clearAllData;
+    window.login = login;
+    window.logout = logout;
     </script>
 </body>
 </html>
-
